@@ -15,26 +15,47 @@ and the [`simulateReadableStream`](/docs/reference/ai-sdk-core/simulate-readable
 Language model middleware is a way to enhance the behavior of language models by intercepting and modifying the calls to the language model.
 Let's see how you can use language model middleware to cache responses.
 
+<Note>  
+To use the middleware API, you’ll need to install the `@ai-sdk/provider` package:
+</Note>
+<div className="my-4">
+  <Tabs items={['pnpm', 'npm', 'yarn', 'bun']}>
+    <Tab>
+      <Snippet text="pnpm add @ai-sdk/provider" dark />
+    </Tab>
+    <Tab>
+      <Snippet text="npm install @ai-sdk/provider" dark />
+    </Tab>
+    <Tab>
+      <Snippet text="yarn add @ai-sdk/provider" dark />
+    </Tab>
+    <Tab>
+      <Snippet text="bun add @ai-sdk/provider" dark />
+    </Tab>
+  </Tabs>
+</div>
 ```ts filename="ai/middleware.ts"
 import { Redis } from '@upstash/redis';
 import {
-  type LanguageModelV3,
-  type LanguageModelV3Middleware,
-  type LanguageModelV3StreamPart,
+  type LanguageModelV2,
+  type LanguageModelV2Middleware,
+  type LanguageModelV2StreamPart,
+} from '@ai-sdk/provider';
+import {
   simulateReadableStream,
 } from 'ai';
 
 const redis = new Redis({
-  url: process.env.KV_URL,
-  token: process.env.KV_TOKEN,
+url: process.env.KV_URL,
+token: process.env.KV_TOKEN,
 });
 
-export const cacheMiddleware: LanguageModelV3Middleware = {
+export const cacheMiddleware: LanguageModelV2Middleware = {
   wrapGenerate: async ({ doGenerate, params }) => {
     const cacheKey = JSON.stringify(params);
 
     const cached = (await redis.get(cacheKey)) as Awaited<
-      ReturnType<LanguageModelV3['doGenerate']>
+      ReturnType<LanguageModelV2['doGenerate']>
     > | null;
 
     if (cached !== null) {
@@ -54,9 +75,10 @@ export const cacheMiddleware: LanguageModelV3Middleware = {
     redis.set(cacheKey, result);
 
     return result;
-  },
-  wrapStream: async ({ doStream, params }) => {
-    const cacheKey = JSON.stringify(params);
+
+},
+wrapStream: async ({ doStream, params }) => {
+const cacheKey = JSON.stringify(params);
 
     // Check if the result is in the cache
     const cached = await redis.get(cacheKey);
@@ -64,7 +86,7 @@ export const cacheMiddleware: LanguageModelV3Middleware = {
     // If cached, return a simulated ReadableStream that yields the cached result
     if (cached !== null) {
       // Format the timestamps in the cached response
-      const formattedChunks = (cached as LanguageModelV3StreamPart[]).map(p => {
+      const formattedChunks = (cached as LanguageModelV2StreamPart[]).map(p => {
         if (p.type === 'response-metadata' && p.timestamp) {
           return { ...p, timestamp: new Date(p.timestamp) };
         } else return p;
@@ -81,11 +103,11 @@ export const cacheMiddleware: LanguageModelV3Middleware = {
     // If not cached, proceed with streaming
     const { stream, ...rest } = await doStream();
 
-    const fullResponse: LanguageModelV3StreamPart[] = [];
+    const fullResponse: LanguageModelV2StreamPart[] = [];
 
     const transformStream = new TransformStream<
-      LanguageModelV3StreamPart,
-      LanguageModelV3StreamPart
+      LanguageModelV2StreamPart,
+      LanguageModelV2StreamPart
     >({
       transform(chunk, controller) {
         fullResponse.push(chunk);
@@ -101,9 +123,11 @@ export const cacheMiddleware: LanguageModelV3Middleware = {
       stream: stream.pipeThrough(transformStream),
       ...rest,
     };
-  },
+
+},
 };
-```
+
+````
 
 <Note>
   This example uses `@upstash/redis` to store and retrieve the assistant's
@@ -166,4 +190,4 @@ export async function POST(req: Request) {
   // Respond with the stream
   return result.toUIMessageStreamResponse();
 }
-```
+````
